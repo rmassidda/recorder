@@ -48,11 +48,47 @@ def process(frames):
         for channel, port in zip(data.T, t):
             port.get_array()[:] = channel
 
+def worker(index, filename):
+    # TODO: handle file not existing
+    with sf.SoundFile(filename, 'r+') as f:
+        # Fill the queue
+        for i in range(buffersize):
+            pos = f.tell()
+            data = f.read(1024)
+            play_q[index].put(data)
+
+        pos = 0
+        cmd = ctrl_q[index].get()
+        while True:
+            # Get command
+            try:
+                cmd = ctrl_q[index].get_nowait()
+            except queue.Empty:
+                pass
+
+            if cmd is None:
+                break
+
+            # Signal flow
+            if pos < f.frames:
+                pos = f.tell()
+                data = f.read(1024)
+                # Handle not full blocks
+                data = np.concatenate((data, silence[:1024-data.shape[0]]))
+                pos += 1024
+                play_q[index].put(data, timeout=timeout)
+            else:
+                play_q[index].put(silence, timeout=timeout)
+
+        play_q[index].put(None, timeout=timeout)
+
 # Define client
 client = jack.Client('mini-recorder')
 blocksize = client.blocksize
 samplerate = client.samplerate
 buffersize = 20
+timeout = blocksize * buffersize / samplerate
+silence = np.zeros((1024,2))
 
 # Define behaviour
 client.set_shutdown_callback(shutdown)
@@ -68,40 +104,39 @@ rec_q      = queue.Queue(maxsize=buffersize)
 n_tapes = 2
 tapes   = []
 play_q  = []
-for i in range(1,n_tapes+1):
+ctrl_q  = []
+threads = []
+fn      = sys.argv[1]
+for i in range(n_tapes):
     tapes.append([
-        client.outports.register('output_'+str(i)),
+        client.outports.register('output_'+str(i+1)),
         ])
     play_q.append(queue.Queue(maxsize=buffersize))
+    ctrl_q.append(queue.Queue(maxsize=buffersize))
+    threads.append(threading.Thread(target=worker,args=(i,fn)))
 
 # Monitor
 monitor = client.outports.register('monitor')
 
-# Playback
-fn = sys.argv[1]
-with sf.SoundFile(fn, 'r+') as f:
+# Automatic connections
+client.activate()
+client.connect('system:capture_1', 'mini-recorder:input')
+client.connect('mini-recorder:monitor', 'system:playback_1')
+    
+# Start threads
+for i in range(n_tapes):
+    threads[i].start()
+    ctrl_q[i].put('START')
 
-    for i in range(buffersize):
-        pos = f.tell()
-        data = f.read(1024)
-        for q in play_q:
-            q.put(data)
+time.sleep(100)
 
-    with client:
-        # Automatic connections
-        client.connect('system:capture_1', 'mini-recorder:input')
-        client.connect('mini-recorder:monitor', 'system:playback_1')
-        timeout = blocksize * buffersize / samplerate
+# Stop threads
+for i in range(n_tapes):
+    ctrl_q[i].put(None)
 
-        while f.tell() < f.frames:
-            pos = f.tell()
-            data = f.read(1024)
-            for q in play_q:
-                q.put(data, timeout=timeout)
-
-        for q in play_q:
-            q.put(None, timeout=timeout)  # Signal end of file
-        event.wait()  # Wait until playback is finished
+# Join threads
+for i in range(n_tapes):
+    threads[i].join()
 
 # Wait and close
 client.deactivate()
