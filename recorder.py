@@ -35,7 +35,7 @@ def process(frames):
     monitor.get_buffer()[:] = input_line.get_buffer()
 
     # Record
-    # rec_q.put(input_line.get_buffer())
+    rec_q.put(input_line.get_buffer())
 
     # Playback
     for t, q in zip(tapes,play_q):
@@ -56,24 +56,42 @@ def worker(index, filename):
             play_q[index].put(silence)
 
         pos = 0
+        # First device selected by default
+        is_selected = ( index == 0 )
         cmd = ctrl_q[index].get()
         while True:
             # Get command
             try:
-                cmd = ctrl_q[index].get_nowait()
+                new_cmd = ctrl_q[index].get_nowait()
+                if new_cmd is not None and new_cmd[:3] == 'SET':
+                    is_selected = ( int(new_cmd[3:]) == index )
+                else:
+                    cmd = new_cmd
             except queue.Empty:
                 pass
 
             if cmd is None:
                 break
 
+            # Consume recordable signal flow
+            if is_selected:
+                try:
+                    to_write = rec_q.get_nowait()
+                except queue.Empty:
+                    pass
+                    # stop_callback('Buffer is empty: increase buffersize?')
+
             # Signal flow
-            if pos < f.frames and cmd != 'PAUSE' and cmd != 'STOP':
+            if pos < f.frames and cmd == 'PLAY':
                 f.seek(pos)
                 data = f.read(1024)
                 # Handle not full blocks
                 data = np.concatenate((data, silence[:1024-data.shape[0]]))
                 play_q[index].put(data, timeout=timeout)
+            elif cmd == 'REC':
+                f.seek(pos)
+                f.write(data)
+                play_q[index].put(silence, timeout=timeout)
             else:
                 play_q[index].put(silence, timeout=timeout)
 
@@ -91,6 +109,7 @@ samplerate = client.samplerate
 buffersize = 20
 timeout = blocksize * buffersize / samplerate
 silence = np.zeros((1024,2))
+noise   = np.random.rand(1024,2)
 
 # Define behaviour
 client.set_shutdown_callback(shutdown)
