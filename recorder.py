@@ -88,12 +88,14 @@ monitor = [
 
 # Playback
 fn = sys.argv[1]
-with sf.SoundFile(fn) as f:
-    block_generator = f.blocks(blocksize=blocksize, dtype='float32',
-                               always_2d=True, fill_value=0)
-    for _, data in zip(range(buffersize), block_generator):
+with sf.SoundFile(fn, 'r+') as f:
+
+    for i in range(buffersize):
+        pos = f.tell()
+        data = f.read(1024)
         for q in play_q:
             q.put(data)
+
     with client:
         # Automatic connections
         client.connect('system:capture_1', 'mini-recorder:input_L')
@@ -101,7 +103,10 @@ with sf.SoundFile(fn) as f:
         client.connect('mini-recorder:monitor_L', 'system:playback_1')
         client.connect('mini-recorder:monitor_R', 'system:playback_2')
         timeout = blocksize * buffersize / samplerate
-        for data in block_generator:
+
+        while f.tell() < f.frames:
+            pos = f.tell()
+            data = f.read(1024)
             for q in play_q:
                 q.put(data, timeout=timeout)
 
