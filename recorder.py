@@ -68,15 +68,19 @@ def worker(index, filename):
                 break
 
             # Signal flow
-            if pos < f.frames and cmd != 'PAUSE':
-                pos = f.tell()
+            if pos < f.frames and cmd != 'PAUSE' and cmd != 'STOP':
+                f.seek(pos)
                 data = f.read(1024)
                 # Handle not full blocks
                 data = np.concatenate((data, silence[:1024-data.shape[0]]))
-                pos += 1024
                 play_q[index].put(data, timeout=timeout)
             else:
                 play_q[index].put(silence, timeout=timeout)
+
+            if cmd == 'PLAY':
+                pos += 1024
+            elif cmd == 'STOP':
+                pos = 0
 
         play_q[index].put(None, timeout=timeout)
 
@@ -129,12 +133,11 @@ for i in range(n_tapes):
     ctrl_q[i].put('PAUSE')
 
 # Interaction
-time.sleep(5)
 for i in range(n_tapes):
     ctrl_q[i].put('PLAY')
-time.sleep(5)
+time.sleep(10)
 for i in range(n_tapes):
-    ctrl_q[i].put('PAUSE')
+    ctrl_q[i].put('STOP')
 time.sleep(2)
 for i in range(n_tapes):
     ctrl_q[i].put('PLAY')
