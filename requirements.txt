@@ -1,0 +1,4 @@
+setuptools
+cffi
+NumPy
+JACK-Client
