@@ -35,7 +35,7 @@ def process(frames):
     monitor.get_buffer()[:] = input_line.get_buffer()
 
     # Record
-    rec_q.put(input_line.get_buffer())
+    rec_q.put(input_line.get_array())
 
     # Playback
     for t, q in zip(tapes,play_q):
@@ -51,13 +51,14 @@ def process(frames):
 def worker(index, filename):
     # TODO: handle file not existing
     with sf.SoundFile(filename, 'r+') as f:
+        # First device selected by default
+        is_selected = ( index == 0 )
+
         # Fill the queue
         for i in range(buffersize):
             play_q[index].put(silence)
 
         pos = 0
-        # First device selected by default
-        is_selected = ( index == 0 )
         cmd = ctrl_q[index].get()
         while True:
             # Get command
@@ -66,6 +67,8 @@ def worker(index, filename):
                 if new_cmd is not None and new_cmd[:3] == 'SET':
                     is_selected = ( int(new_cmd[3:]) == index )
                 else:
+                    if cmd != new_cmd:
+                        print(index,cmd,new_cmd)
                     cmd = new_cmd
             except queue.Empty:
                 pass
@@ -78,8 +81,13 @@ def worker(index, filename):
                 try:
                     to_write = rec_q.get_nowait()
                 except queue.Empty:
+                    """
+                    Better don't be greedy, the queue
+                    could be empty because many tapes
+                    think to be selected at the same
+                    time for a few times.
+                    """
                     pass
-                    # stop_callback('Buffer is empty: increase buffersize?')
 
             # Signal flow
             if pos < f.frames and cmd == 'PLAY':
@@ -90,12 +98,13 @@ def worker(index, filename):
                 play_q[index].put(data, timeout=timeout)
             elif cmd == 'REC':
                 f.seek(pos)
-                f.write(data)
+                to_write = np.vstack((to_write,to_write)).T
+                f.write(to_write)
                 play_q[index].put(silence, timeout=timeout)
             else:
                 play_q[index].put(silence, timeout=timeout)
 
-            if cmd == 'PLAY':
+            if cmd == 'PLAY' or cmd == 'REC':
                 pos += 1024
             elif cmd == 'STOP':
                 pos = 0
@@ -154,10 +163,17 @@ for i in range(n_tapes):
 # Interaction
 for i in range(n_tapes):
     ctrl_q[i].put('PLAY')
-time.sleep(10)
+time.sleep(4)
+
+ctrl_q[0].put('REC')
+time.sleep(4)
+ctrl_q[0].put('PLAY')
+time.sleep(4)
+
 for i in range(n_tapes):
     ctrl_q[i].put('STOP')
 time.sleep(2)
+
 for i in range(n_tapes):
     ctrl_q[i].put('PLAY')
 time.sleep(10)
