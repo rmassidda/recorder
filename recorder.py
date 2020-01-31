@@ -19,7 +19,6 @@ def shutdown(status, reason):
     print_error('reason:', reason)
     event.set()
 
-
 def stop_callback(msg=''):
     if msg:
         print_error(msg)
@@ -33,11 +32,10 @@ def process(frames):
         stop_callback('blocksize must not be changed, I quit!')
 
     # Monitor
-    for i, o in zip(inputs, monitor):
-        o.get_buffer()[:] = i.get_buffer()
+    monitor.get_buffer()[:] = input_line.get_buffer()
 
     # Record
-    # rec_q.put(np.vstack((inputs[0].get_buffer(),inputs[1].get_buffer())))
+    # rec_q.put(input_line.get_buffer())
 
     # Playback
     for t, q in zip(tapes,play_q):
@@ -62,29 +60,22 @@ client.set_xrun_callback(xrun)
 client.set_process_callback(process)
 event = threading.Event()
 
-# Stereo input
-inputs = [
-    client.inports.register('input_L'),
-    client.inports.register('input_R')
-    ]
-rec_q = queue.Queue(maxsize=buffersize)
+# Input
+input_line = client.inports.register('input')
+rec_q      = queue.Queue(maxsize=buffersize)
 
-# Stereo outputs
+# Output
 n_tapes = 2
 tapes   = []
 play_q  = []
 for i in range(1,n_tapes+1):
     tapes.append([
-        client.outports.register('output_'+str(i)+'L'),
-        client.outports.register('output_'+str(i)+'R')
+        client.outports.register('output_'+str(i)),
         ])
     play_q.append(queue.Queue(maxsize=buffersize))
 
-# Stereo monitor
-monitor = [
-    client.outports.register('monitor_L'),
-    client.outports.register('monitor_R')
-    ]
+# Monitor
+monitor = client.outports.register('monitor')
 
 # Playback
 fn = sys.argv[1]
@@ -98,10 +89,8 @@ with sf.SoundFile(fn, 'r+') as f:
 
     with client:
         # Automatic connections
-        client.connect('system:capture_1', 'mini-recorder:input_L')
-        client.connect('system:capture_2', 'mini-recorder:input_R')
-        client.connect('mini-recorder:monitor_L', 'system:playback_1')
-        client.connect('mini-recorder:monitor_R', 'system:playback_2')
+        client.connect('system:capture_1', 'mini-recorder:input')
+        client.connect('mini-recorder:monitor', 'system:playback_1')
         timeout = blocksize * buffersize / samplerate
 
         while f.tell() < f.frames:
