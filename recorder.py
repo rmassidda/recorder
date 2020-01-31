@@ -106,14 +106,14 @@ tapes   = []
 play_q  = []
 ctrl_q  = []
 threads = []
-fn      = sys.argv[1]
 for i in range(n_tapes):
     tapes.append([
         client.outports.register('output_'+str(i+1)),
         ])
     play_q.append(queue.Queue(maxsize=buffersize))
     ctrl_q.append(queue.Queue(maxsize=buffersize))
-    threads.append(threading.Thread(target=worker,args=(i,fn)))
+    # TODO: change input files mechanism
+    threads.append(threading.Thread(target=worker,args=(i,sys.argv[i+1])))
 
 # Monitor
 monitor = client.outports.register('monitor')
@@ -122,12 +122,15 @@ monitor = client.outports.register('monitor')
 client.activate()
 client.connect('system:capture_1', 'mini-recorder:input')
 client.connect('mini-recorder:monitor', 'system:playback_1')
+for i in range(n_tapes):
+    client.connect('mini-recorder:output_'+str(i+1), 'system:playback_1')
     
 # Start threads
 for i in range(n_tapes):
     threads[i].start()
     ctrl_q[i].put('START')
 
+# Interaction
 time.sleep(100)
 
 # Stop threads
