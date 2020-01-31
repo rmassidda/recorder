@@ -49,12 +49,6 @@ def process(frames):
             port.get_array()[:] = channel
 
 def worker(index, filename):
-    try:
-        sf.SoundFile(filename,'r')
-    except:
-        fp = sf.SoundFile(filename,'w+', samplerate=samplerate, channels=2, format='WAV', subtype='FLOAT')
-        fp.close()
-
     with sf.SoundFile(filename, 'r+') as f:
         # First device selected by default
         is_selected = ( index == 0 )
@@ -138,7 +132,7 @@ input_line = client.inports.register('input')
 rec_q      = queue.Queue(maxsize=buffersize)
 
 # Output
-n_tapes = 2
+n_tapes = 8
 tapes   = []
 play_q  = []
 ctrl_q  = []
@@ -149,8 +143,16 @@ for i in range(n_tapes):
         ])
     play_q.append(queue.Queue(maxsize=buffersize))
     ctrl_q.append(queue.Queue(maxsize=buffersize))
-    # TODO: change input files mechanism
-    threads.append(threading.Thread(target=worker,args=(i,str(i+1)+'.wav')))
+
+    filename = str(i+1)+'.wav'
+    threads.append(threading.Thread(target=worker,args=(i,filename)))
+    # Create file if it does not exist
+    try:
+        sf.SoundFile(filename,'r')
+    except:
+        fp = sf.SoundFile(filename,'w+', samplerate=samplerate, channels=2, format='WAV', subtype='FLOAT')
+        fp.close()
+
 
 # Monitor
 monitor = client.outports.register('monitor')
