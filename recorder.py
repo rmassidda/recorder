@@ -150,7 +150,7 @@ for i in range(n_tapes):
     play_q.append(queue.Queue(maxsize=buffersize))
     ctrl_q.append(queue.Queue(maxsize=buffersize))
     # TODO: change input files mechanism
-    threads.append(threading.Thread(target=worker,args=(i,sys.argv[i+1])))
+    threads.append(threading.Thread(target=worker,args=(i,str(i+1)+'.wav')))
 
 # Monitor
 monitor = client.outports.register('monitor')
@@ -174,6 +174,9 @@ while True:
     line = line.upper()[:-1]
     if line == 'REC':
         ctrl_q[selected].put('REC')
+        for i in range(n_tapes):
+            if i != selected:
+                ctrl_q[i].put('PLAY')
     elif line == 'QUIT':
         break
     else:
