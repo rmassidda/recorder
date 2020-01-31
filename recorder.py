@@ -53,9 +53,7 @@ def worker(index, filename):
     with sf.SoundFile(filename, 'r+') as f:
         # Fill the queue
         for i in range(buffersize):
-            pos = f.tell()
-            data = f.read(1024)
-            play_q[index].put(data)
+            play_q[index].put(silence)
 
         pos = 0
         cmd = ctrl_q[index].get()
@@ -70,7 +68,7 @@ def worker(index, filename):
                 break
 
             # Signal flow
-            if pos < f.frames:
+            if pos < f.frames and cmd != 'PAUSE':
                 pos = f.tell()
                 data = f.read(1024)
                 # Handle not full blocks
@@ -128,10 +126,19 @@ for i in range(n_tapes):
 # Start threads
 for i in range(n_tapes):
     threads[i].start()
-    ctrl_q[i].put('START')
+    ctrl_q[i].put('PAUSE')
 
 # Interaction
-time.sleep(100)
+time.sleep(5)
+for i in range(n_tapes):
+    ctrl_q[i].put('PLAY')
+time.sleep(5)
+for i in range(n_tapes):
+    ctrl_q[i].put('PAUSE')
+time.sleep(2)
+for i in range(n_tapes):
+    ctrl_q[i].put('PLAY')
+time.sleep(10)
 
 # Stop threads
 for i in range(n_tapes):
