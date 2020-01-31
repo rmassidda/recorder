@@ -3,18 +3,10 @@ import queue
 import numpy as np
 import time
 import threading
+import soundfile as sf
 import sys
 
-client = jack.Client('mini-recorder')
-
-# Get info
-blocksize = client.blocksize
-samplerate = client.samplerate
-
 # Callbacks
-q = queue.Queue()
-event = threading.Event()
-
 def print_error(*args):
     print(*args, file=sys.stderr)
 
@@ -27,6 +19,7 @@ def shutdown(status, reason):
     print_error('reason:', reason)
     event.set()
 
+
 def stop_callback(msg=''):
     if msg:
         print_error(msg)
@@ -38,22 +31,54 @@ def stop_callback(msg=''):
 def process(frames):
     if frames != blocksize:
         stop_callback('blocksize must not be changed, I quit!')
-    for i, o in zip(client.inports, monitor):
+
+    # Monitor
+    for i, o in zip(inputs, monitor):
         o.get_buffer()[:] = i.get_buffer()
+
+    # Record
+    # rec_q.put(np.vstack((inputs[0].get_buffer(),inputs[1].get_buffer())))
+
+    # Playback
+    for t, q in zip(tapes,play_q):
+        try:
+            data = q.get_nowait()
+        except queue.Empty:
+            stop_callback('Buffer is empty: increase buffersize?')
+        if data is None:
+            stop_callback()  # Playback is finished
+        for channel, port in zip(data.T, t):
+            port.get_array()[:] = channel
+
+# Define client
+client = jack.Client('mini-recorder')
+blocksize = client.blocksize
+samplerate = client.samplerate
+buffersize = 20
 
 # Define behaviour
 client.set_shutdown_callback(shutdown)
+client.set_xrun_callback(xrun)
 client.set_process_callback(process)
+event = threading.Event()
 
 # Stereo input
-client.inports.register('input_L')
-client.inports.register('input_R')
+inputs = [
+    client.inports.register('input_L'),
+    client.inports.register('input_R')
+    ]
+rec_q = queue.Queue(maxsize=buffersize)
 
 # Stereo outputs
-n_tracks = 2
-for i in range(1,n_tracks+1):
-    client.outports.register('output_'+str(i)+'L')
-    client.outports.register('output_'+str(i)+'R')
+n_tapes = 2
+tapes   = []
+play_q  = []
+for i in range(1,n_tapes+1):
+    tapes.append([
+        client.outports.register('output_'+str(i)+'L'),
+        client.outports.register('output_'+str(i)+'R')
+        ])
+    play_q.append(queue.Queue(maxsize=buffersize))
 
 # Stereo monitor
 monitor = [
@@ -61,14 +86,29 @@ monitor = [
     client.outports.register('monitor_R')
     ]
 
-# Automatic connections
-client.activate()
-client.connect('system:capture_1', 'mini-recorder:input_L')
-client.connect('system:capture_2', 'mini-recorder:input_R')
-client.connect('mini-recorder:monitor_L', 'system:playback_1')
-client.connect('mini-recorder:monitor_R', 'system:playback_2')
+# Playback
+fn = sys.argv[1]
+with sf.SoundFile(fn) as f:
+    block_generator = f.blocks(blocksize=blocksize, dtype='float32',
+                               always_2d=True, fill_value=0)
+    for _, data in zip(range(buffersize), block_generator):
+        for q in play_q:
+            q.put(data)
+    with client:
+        # Automatic connections
+        client.connect('system:capture_1', 'mini-recorder:input_L')
+        client.connect('system:capture_2', 'mini-recorder:input_R')
+        client.connect('mini-recorder:monitor_L', 'system:playback_1')
+        client.connect('mini-recorder:monitor_R', 'system:playback_2')
+        timeout = blocksize * buffersize / samplerate
+        for data in block_generator:
+            for q in play_q:
+                q.put(data, timeout=timeout)
+
+        for q in play_q:
+            q.put(None, timeout=timeout)  # Signal end of file
+        event.wait()  # Wait until playback is finished
 
 # Wait and close
-time.sleep(4)
 client.deactivate()
 client.close()
