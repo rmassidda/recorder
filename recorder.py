@@ -49,7 +49,12 @@ def process(frames):
             port.get_array()[:] = channel
 
 def worker(index, filename):
-    # TODO: handle file not existing
+    try:
+        sf.SoundFile(filename,'r')
+    except:
+        fp = sf.SoundFile(filename,'w+', samplerate=samplerate, channels=2, format='WAV', subtype='FLOAT')
+        fp.close()
+
     with sf.SoundFile(filename, 'r+') as f:
         # First device selected by default
         is_selected = ( index == 0 )
@@ -92,9 +97,9 @@ def worker(index, filename):
             # Signal flow
             if pos < f.frames and cmd == 'PLAY':
                 f.seek(pos)
-                data = f.read(1024)
+                data = f.read(blocksize)
                 # Handle not full blocks
-                data = np.concatenate((data, silence[:1024-data.shape[0]]))
+                data = np.concatenate((data, silence[:blocksize-data.shape[0]]))
                 play_q[index].put(data, timeout=timeout)
             elif cmd == 'REC':
                 f.seek(pos)
@@ -105,7 +110,7 @@ def worker(index, filename):
                 play_q[index].put(silence, timeout=timeout)
 
             if cmd == 'PLAY' or cmd == 'REC':
-                pos += 1024
+                pos += blocksize
             elif cmd == 'STOP':
                 pos = 0
 
@@ -117,8 +122,8 @@ blocksize = client.blocksize
 samplerate = client.samplerate
 buffersize = 20
 timeout = blocksize * buffersize / samplerate
-silence = np.zeros((1024,2))
-noise   = np.random.rand(1024,2)
+silence = np.zeros((blocksize,2))
+noise   = np.random.rand(blocksize,2)
 
 # Define behaviour
 client.set_shutdown_callback(shutdown)
@@ -163,11 +168,9 @@ for i in range(n_tapes):
 # Interaction
 for i in range(n_tapes):
     ctrl_q[i].put('PLAY')
-time.sleep(4)
+time.sleep(2)
 
 ctrl_q[0].put('REC')
-time.sleep(4)
-ctrl_q[0].put('PLAY')
 time.sleep(4)
 
 for i in range(n_tapes):
