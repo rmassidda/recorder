@@ -71,6 +71,8 @@ def worker(index, filename):
                 new_cmd = ctrl_q[index].get_nowait()
                 if new_cmd is not None and new_cmd[:3] == 'SET':
                     is_selected = ( int(new_cmd[3:]) == index )
+                    if is_selected:
+                        print(index,'selected')
                 else:
                     if cmd != new_cmd:
                         print(index,cmd,new_cmd)
@@ -101,7 +103,7 @@ def worker(index, filename):
                 # Handle not full blocks
                 data = np.concatenate((data, silence[:blocksize-data.shape[0]]))
                 play_q[index].put(data, timeout=timeout)
-            elif cmd == 'REC':
+            elif cmd == 'REC' and is_selected:
                 f.seek(pos)
                 to_write = np.vstack((to_write,to_write)).T
                 f.write(to_write)
@@ -109,7 +111,7 @@ def worker(index, filename):
             else:
                 play_q[index].put(silence, timeout=timeout)
 
-            if cmd == 'PLAY' or cmd == 'REC':
+            if cmd == 'PLAY' or ( cmd == 'REC' and is_selected ):
                 pos += blocksize
             elif cmd == 'STOP':
                 pos = 0
@@ -165,21 +167,20 @@ for i in range(n_tapes):
     threads[i].start()
     ctrl_q[i].put('PAUSE')
 
-# Interaction
-for i in range(n_tapes):
-    ctrl_q[i].put('PLAY')
-time.sleep(2)
-
-ctrl_q[0].put('REC')
-time.sleep(4)
-
-for i in range(n_tapes):
-    ctrl_q[i].put('STOP')
-time.sleep(2)
-
-for i in range(n_tapes):
-    ctrl_q[i].put('PLAY')
-time.sleep(10)
+# Interactive shell
+selected = 0
+while True:
+    line = sys.stdin.readline()
+    line = line.upper()[:-1]
+    if line == 'REC':
+        ctrl_q[selected].put('REC')
+    elif line == 'QUIT':
+        break
+    else:
+        if line[:3] == 'SET':
+            selected = int(line[3:])
+        for i in range(n_tapes):
+            ctrl_q[i].put(line)
 
 # Stop threads
 for i in range(n_tapes):
