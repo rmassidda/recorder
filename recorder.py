@@ -61,7 +61,6 @@ def master():
         # Get command
         try:
             cmd = ctrl_q.get_nowait()
-            print(cmd)
         except queue.Empty:
             pass
 
@@ -234,15 +233,55 @@ for i in range(n_tapes):
     workers[i].start()
 
 # Interactive shell
-while True:
-    line = sys.stdin.readline()
-    line = line.upper()[:-1]
+time.sleep(0.3)
+prompt = '> '
 
-    if line == 'QUIT':
+def helper():
+    print('h[elp], to show this scree again')
+    print('p[lay]')
+    print('s[top]')
+    print('[paus]e')
+    print('r[ec] tape_id')
+    print('f[orward] [speed]')
+    print('b[ackward] [speed]')
+    print('q[uit]')
+
+print('recorder, interactive mode')
+helper()
+while True:
+    line = input(prompt)
+    
+    try:
+        arg = line.split()[1]
+    except:
+        arg = None
+
+    if line == '':
+        print(end='')
+        continue
+
+    if line[0] == 'h':
+        helper()
+    elif line[0] == 'p':
+        ctrl_q.put('PLAY')
+    elif line[0] == 's':
+        ctrl_q.put('STOP')
+    elif line[0] == 'e':
+        ctrl_q.put('PAUSE')
+    elif line[0] == 'r':
+        if arg is not None:
+            ctrl_q.put('REC'+arg)
+    elif line[0] == 'f':
+        if arg is None:
+            arg = str(1.5)
+        ctrl_q.put('FWD'+arg)
+    elif line[0] == 'b':
+        if arg is None:
+            arg = str(1.5)
+        ctrl_q.put('RWD'+arg)
+    elif line[0] == 'q':
         ctrl_q.put(None)
         break
-
-    ctrl_q.put(line)
 
 # Join threads
 master.join()
