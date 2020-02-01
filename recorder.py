@@ -90,6 +90,10 @@ def master():
         # Reprise the tape
         if cmd[:3] == 'REC':
             selected = int(cmd[3:])
+        elif cmd[:3] == 'RWD':
+            speed = int(cmd[3:])
+        elif cmd[:3] == 'FWD':
+            speed = int(cmd[3:])
 
         # Get recording
         try:
@@ -108,6 +112,12 @@ def master():
 
         if cmd == 'PLAY' or cmd[:3] == 'REC':
             next_pos_r = pos_r + blocksize
+        elif cmd[:3] == 'RWD':
+            next_pos_r = max(0,pos_r - speed * blocksize)
+            if next_pos_r == 0:
+                cmd = 'STOP'
+        elif cmd[:3] == 'FWD':
+            next_pos_r = pos_r + speed * blocksize
 
 def slave(index, filename):
     with sf.SoundFile(filename, 'r+') as f:
