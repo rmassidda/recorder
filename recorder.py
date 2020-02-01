@@ -138,7 +138,7 @@ def slave(index, filename):
                 speed  = abs(speed) 
                 length = int(speed * blocksize)
                 data_r = f.read(length)
-                speed  = int(len(data_r)/blocksize) # adapt the speed to the actually read array
+                speed  = len(data_r)/blocksize # adapt the speed to the actually read array
                 sample = [int(i * speed) for i in range(blocksize)]
                 data_r = data_r[sample]
                 data_r = np.concatenate((data_r, silence[:blocksize-data_r.shape[0]]))
