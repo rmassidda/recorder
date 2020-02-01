@@ -116,7 +116,7 @@ def worker(index, filename):
 client = jack.Client('mini-recorder')
 blocksize = client.blocksize
 samplerate = client.samplerate
-buffersize = 20
+buffersize = 50
 timeout = blocksize * buffersize / samplerate
 silence = np.zeros((blocksize,2))
 noise   = np.random.rand(blocksize,2)
