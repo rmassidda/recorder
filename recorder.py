@@ -48,7 +48,7 @@ def process(frames):
     The block recorded is based on what
     was listened in the previous.
     """
-    # rec_q.put((pos_r-blocksize,input_line.get_array()))
+    rec_q.put((pos_r-blocksize,input_line.get_array()))
 
 def master():
     pos_r      = -1
@@ -83,14 +83,15 @@ def master():
 
         # Reprise the tape
         if cmd[:3] == 'REC':
-            selected = int(new_cmd[3:])
+            selected = int(cmd[3:])
 
         # Get recording
-        # try:
-        #     pos_w, data_w = rec_q.get_nowait()
-        # except queue.Empty:
-        #     print('Jack → Master empty')
-        #     pass
+        try:
+            pos_w, data_w = rec_q.get_nowait()
+        except queue.Empty:
+            print('Jack → Master empty')
+            pos_w = -1
+            pass
 
         # Send position to the slaves
         for i in range(n_tapes):
