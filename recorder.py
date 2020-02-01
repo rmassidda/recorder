@@ -37,77 +37,99 @@ def process(frames):
     # Playback
     for t, q in zip(tapes,play_q):
         try:
-            pos, data = q.get_nowait()
+            pos_r, data_r = q.get_nowait()
         except queue.Empty:
-            stop_callback('Buffer is empty: increase buffersize?')
-        if data is None:
+            print('This should not happen!')
+            data_r = silence
+            # stop_callback('Buffer is empty: increase buffersize?')
+        except TypeError:
             stop_callback()  # Playback is finished
-        t.get_array()[:] = data
+        t.get_array()[:] = data_r
 
     """
     The block recorded is based on what
     was listened in the previous.
     """
-    rec_q.put((pos-blocksize,input_line.get_array()))
+    # rec_q.put((pos_r-blocksize,input_line.get_array()))
 
-def worker(index, filename):
+def master():
+    pos_r      = -1
+    next_pos_r = 0
+    selected   = -1
+    cmd        = 'PAUSE'
+    
+    while True:
+        # Get command
+        try:
+            cmd = ctrl_q.get_nowait()
+            print(cmd)
+        except queue.Empty:
+            pass
+
+        # Interrupt
+        if cmd is None:
+            for i in range(n_tapes):
+                sync_q[i].put(None)
+            break
+
+        # Default play mode
+        selected = -1
+        pos_r    = next_pos_r
+
+        # Block the tape
+        if cmd == 'STOP':
+            next_pos_r = 0
+            pos_r      = -1
+        elif cmd == 'PAUSE':
+            pos_r      = -1
+
+        # Reprise the tape
+        if cmd[:3] == 'REC':
+            selected = int(new_cmd[3:])
+
+        # Get recording
+        # try:
+        #     pos_w, data_w = rec_q.get_nowait()
+        # except queue.Empty:
+        #     print('Jack → Master empty')
+        #     pass
+
+        # Send position to the slaves
+        for i in range(n_tapes):
+            if i == selected:
+                sync_q[i].put((pos_r,pos_w,data_w))
+            else:
+                sync_q[i].put((pos_r,-1,None))
+
+        if cmd == 'PLAY' or cmd[:3] == 'REC':
+            next_pos_r = pos_r + blocksize
+
+def slave(index, filename):
     with sf.SoundFile(filename, 'r+') as f:
-        # First device selected by default
-        is_selected = ( index == 0 )
-
-        pos = 0
-        cmd = ctrl_q[index].get()
         while True:
-            # Get command
             try:
-                new_cmd = ctrl_q[index].get_nowait()
-                if new_cmd is not None and new_cmd[:3] == 'SET':
-                    is_selected = ( int(new_cmd[3:]) == index )
-                    if is_selected:
-                        print(index,'selected')
-                else:
-                    if cmd != new_cmd:
-                        print(index,cmd,new_cmd)
-                    cmd = new_cmd
+                pos_r, pos_w, data_w = sync_q[index].get()
             except queue.Empty:
-                pass
-
-            if cmd is None:
+                print('sync_q: Master → Slave',index,'empty')
+                continue
+            except TypeError:
                 break
 
-            # Consume recordable signal flow
-            if is_selected:
-                try:
-                    pos_w, data_w = rec_q.get_nowait()
-                except queue.Empty:
-                    """
-                    Better don't be greedy, the queue
-                    could be empty because many tapes
-                    think to be selected at the same
-                    time for a few times.
-                    """
-                    pass
-
-            # Signal flow
-            if pos < f.frames and cmd == 'PLAY':
-                f.seek(pos)
-                data = f.read(blocksize)
-                # Handle not full blocks
-                data = np.concatenate((data, silence[:blocksize-data.shape[0]]))
-                play_q[index].put((pos,data), timeout=timeout)
-            elif cmd == 'REC' and is_selected:
-                if pos_w > 0:
-                    f.seek(pos_w)
-                    f.write(data_w)
-                play_q[index].put((pos,silence), timeout=timeout)
+            # Read from file
+            if pos_r < f.frames and pos_r >= 0:
+                f.seek(pos_r)
+                data_r = f.read(blocksize)
+                data_r = np.concatenate((data_r, silence[:blocksize-data_r.shape[0]]))
+                play_q[index].put((pos_r,data_r), timeout=timeout)
             else:
-                play_q[index].put((pos,silence), timeout=timeout)
+                play_q[index].put((pos_r,silence), timeout=timeout)
 
-            if cmd == 'PLAY' or ( cmd == 'REC' and is_selected ):
-                pos += blocksize
-            elif cmd == 'STOP':
-                pos = 0
+            # Write to file
+            if pos_w > 0:
+                f.seek(pos_w)
+                f.write(data_w)
 
+        # Stop JACK process
         play_q[index].put((0,None), timeout=timeout)
 
 # Define client
@@ -118,6 +140,7 @@ buffersize = 20
 timeout = blocksize * buffersize / samplerate
 silence = np.zeros((blocksize))
 noise   = np.random.rand(blocksize)
+n_tapes = 8
 
 # Define behaviour
 client.set_shutdown_callback(shutdown)
@@ -125,35 +148,44 @@ client.set_xrun_callback(xrun)
 client.set_process_callback(process)
 event = threading.Event()
 
-# Input
+# JACK ports
 input_line = client.inports.register('input')
-rec_q      = queue.Queue(maxsize=buffersize)
-
-# Output
-n_tapes = 8
+monitor = client.outports.register('monitor')
 tapes   = []
-play_q  = []
-ctrl_q  = []
-threads = []
 for i in range(n_tapes):
     tapes.append(client.outports.register('output_'+str(i+1)))
-    play_q.append(queue.Queue(maxsize=buffersize))
-    ctrl_q.append(queue.Queue(maxsize=buffersize))
 
+# Controller → Master
+sync_q = []
+ctrl_q = queue.Queue(maxsize=buffersize)
+
+# Master → Slave
+for i in range(n_tapes):
+    sync_q.append(queue.Queue(maxsize=buffersize))
+
+# Slave → Jack
+play_q = []
+for i in range(n_tapes):
+    play_q.append(queue.Queue(maxsize=buffersize))
+
+# Jack → Master
+rec_q = queue.Queue(maxsize=buffersize)
+
+# Create files if they do not exist
+for i in range(n_tapes):
     filename = str(i+1)+'.wav'
-    threads.append(threading.Thread(target=worker,args=(i,filename)))
-    # Create file if it does not exist
     try:
         sf.SoundFile(filename,'r')
     except:
         fp = sf.SoundFile(filename,'w+', samplerate=samplerate, channels=1, format='WAV', subtype='FLOAT')
         fp.close()
 
-    # Fill the queue (maybe needed more)
-    play_q[i].put((0,silence))
-
-# Monitor
-monitor = client.outports.register('monitor')
+# Create threads
+master  = threading.Thread(target=master)
+workers = []
+for i in range(n_tapes):
+    filename = str(i+1)+'.wav'
+    workers.append(threading.Thread(target=slave,args=(i,filename)))
 
 # Automatic connections
 client.activate()
@@ -163,35 +195,25 @@ for i in range(n_tapes):
     client.connect('mini-recorder:output_'+str(i+1), 'system:playback_1')
     
 # Start threads
+master.start()
 for i in range(n_tapes):
-    threads[i].start()
-    ctrl_q[i].put('PAUSE')
+    workers[i].start()
 
 # Interactive shell
-selected = 0
 while True:
     line = sys.stdin.readline()
     line = line.upper()[:-1]
-    if line == 'REC':
-        ctrl_q[selected].put('REC')
-        for i in range(n_tapes):
-            if i != selected:
-                ctrl_q[i].put('PLAY')
-    elif line == 'QUIT':
-        break
-    else:
-        if line[:3] == 'SET':
-            selected = int(line[3:])
-        for i in range(n_tapes):
-            ctrl_q[i].put(line)
 
-# Stop threads
-for i in range(n_tapes):
-    ctrl_q[i].put(None)
+    if line == 'QUIT':
+        ctrl_q.put(None)
+        break
+
+    ctrl_q.put(line)
 
 # Join threads
+master.join()
 for i in range(n_tapes):
-    threads[i].join()
+    workers[i].join()
 
 # Wait and close
 client.deactivate()
