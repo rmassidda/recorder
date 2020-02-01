@@ -41,6 +41,7 @@ def process(frames):
         except queue.Empty:
             stop_callback('Buffer is empty: increase buffersize?')
         except TypeError:
+            rec_q.put(None)
             stop_callback()  # Playback is finished
         t.get_array()[:] = data_r
 
@@ -66,8 +67,13 @@ def master():
 
         # Interrupt
         if cmd is None:
+            print("Master incites the slaves to kill JACK")
             for i in range(n_tapes):
                 sync_q[i].put(None)
+            print("Wait for JACK to die")
+            while rec_q.get() is not None:
+                pass
+            print("Jack died")
             break
 
         # Default play mode
@@ -129,7 +135,8 @@ def slave(index, filename):
                 f.write(data_w)
 
         # Stop JACK process
-        play_q[index].put((0,None), timeout=timeout)
+        print("Slave",index,"stabbed JACK, ouch!")
+        play_q[index].put(None, timeout=timeout)
 
 # Define client
 client = jack.Client('mini-recorder')
