@@ -49,13 +49,13 @@ def process(frames):
     The block recorded is based on what
     was listened in the previous.
     """
-    rec_q.put((pos_r-blocksize,input_line.get_array()))
+    rec_q.put((pos_r+blocksize*buffersize,input_line.get_array()))
 
 def master():
     pos_r      = -1
     next_pos_r = 0
     selected   = -1
-    cmd        = 'PAUSE'
+    cmd        = 'STOP'
     
     while True:
         # Get command
@@ -121,7 +121,7 @@ def slave(index, filename):
                 break
 
             # Read from file
-            if pos_r < f.frames and pos_r >= 0:
+            if pos_r < f.frames and pos_r >= 0 and pos_w < 0:
                 f.seek(pos_r)
                 data_r = f.read(blocksize)
                 data_r = np.concatenate((data_r, silence[:blocksize-data_r.shape[0]]))
@@ -130,7 +130,7 @@ def slave(index, filename):
                 play_q[index].put((pos_r,silence), timeout=timeout)
 
             # Write to file
-            if pos_w > 0:
+            if pos_w >= 0:
                 f.seek(pos_w)
                 f.write(data_w)
 
@@ -144,6 +144,10 @@ blocksize = client.blocksize
 samplerate = client.samplerate
 buffersize = 20
 timeout = blocksize * buffersize / samplerate
+print('blocksize',blocksize)
+print('samplerate',samplerate)
+print('buffersize',buffersize)
+print('timeout',timeout)
 silence = np.zeros((blocksize))
 noise   = np.random.rand(blocksize)
 n_tapes = 8
@@ -193,9 +197,11 @@ for i in range(n_tapes):
     filename = str(i+1)+'.wav'
     workers.append(threading.Thread(target=slave,args=(i,filename)))
 
-# Prefill JACK queues from the slaves
-for i in range(n_tapes):
-    play_q[i].put((0,silence))
+# Prefill JACK queues
+for _ in range(buffersize):
+    rec_q.put((-1,silence))
+    for i in range(n_tapes):
+        play_q[i].put((-1,silence))
 
 # Automatic connections
 client.activate()
