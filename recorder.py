@@ -34,18 +34,21 @@ def process(frames):
     # Monitor
     monitor.get_buffer()[:] = input_line.get_buffer()
 
-    # Record
-    rec_q.put(input_line.get_array())
-
     # Playback
     for t, q in zip(tapes,play_q):
         try:
-            data = q.get_nowait()
+            pos, data = q.get_nowait()
         except queue.Empty:
             stop_callback('Buffer is empty: increase buffersize?')
         if data is None:
             stop_callback()  # Playback is finished
         t.get_array()[:] = data
+
+    """
+    The block recorded is based on what
+    was listened in the previous.
+    """
+    rec_q.put((pos-blocksize,input_line.get_array()))
 
 def worker(index, filename):
     with sf.SoundFile(filename, 'r+') as f:
@@ -75,7 +78,7 @@ def worker(index, filename):
             # Consume recordable signal flow
             if is_selected:
                 try:
-                    to_write = rec_q.get_nowait()
+                    pos_w, data_w = rec_q.get_nowait()
                 except queue.Empty:
                     """
                     Better don't be greedy, the queue
@@ -91,20 +94,21 @@ def worker(index, filename):
                 data = f.read(blocksize)
                 # Handle not full blocks
                 data = np.concatenate((data, silence[:blocksize-data.shape[0]]))
-                play_q[index].put(data, timeout=timeout)
+                play_q[index].put((pos,data), timeout=timeout)
             elif cmd == 'REC' and is_selected:
-                f.seek(pos)
-                f.write(to_write)
-                play_q[index].put(silence, timeout=timeout)
+                if pos_w > 0:
+                    f.seek(pos_w)
+                    f.write(data_w)
+                play_q[index].put((pos,silence), timeout=timeout)
             else:
-                play_q[index].put(silence, timeout=timeout)
+                play_q[index].put((pos,silence), timeout=timeout)
 
             if cmd == 'PLAY' or ( cmd == 'REC' and is_selected ):
                 pos += blocksize
             elif cmd == 'STOP':
                 pos = 0
 
-        play_q[index].put(None, timeout=timeout)
+        play_q[index].put((0,None), timeout=timeout)
 
 # Define client
 client = jack.Client('mini-recorder')
@@ -145,8 +149,8 @@ for i in range(n_tapes):
         fp = sf.SoundFile(filename,'w+', samplerate=samplerate, channels=1, format='WAV', subtype='FLOAT')
         fp.close()
 
-    # Fill the queue
-    # play_q[i].put(silence)
+    # Fill the queue (maybe needed more)
+    play_q[i].put((0,silence))
 
 # Monitor
 monitor = client.outports.register('monitor')
