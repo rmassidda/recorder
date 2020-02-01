@@ -107,9 +107,9 @@ def master():
         # Send position to the slaves
         for i in range(n_tapes):
             if i == selected:
-                sync_q[i].put((pos_r,pos_w,data_w))
+                sync_q[i].put((speed,pos_r,pos_w,data_w))
             else:
-                sync_q[i].put((pos_r,-1,None))
+                sync_q[i].put((speed,pos_r,-1,None))
 
         if cmd == 'PLAY' or cmd[:3] == 'REC':
             next_pos_r = pos_r + blocksize
@@ -124,7 +124,7 @@ def slave(index, filename):
     with sf.SoundFile(filename, 'r+') as f:
         while True:
             try:
-                pos_r, pos_w, data_w = sync_q[index].get()
+                speed, pos_r, pos_w, data_w = sync_q[index].get()
             except queue.Empty:
                 print('sync_q: Master → Slave',index,'empty')
                 continue
@@ -134,8 +134,15 @@ def slave(index, filename):
             # Read from file
             if pos_r < f.frames and pos_r >= 0 and pos_w < 0:
                 f.seek(pos_r)
-                data_r = f.read(blocksize)
+                direct = speed < 0 # save the direction for later
+                speed  = abs(speed) 
+                length = int(speed * blocksize)
+                data_r = f.read(length)
+                speed  = int(len(data_r)/blocksize) # adapt the speed to the actually read array
+                sample = [int(i * speed) for i in range(blocksize)]
+                data_r = data_r[sample]
                 data_r = np.concatenate((data_r, silence[:blocksize-data_r.shape[0]]))
+                if direct: data_r = data_r[::-1] # reverse array if needed
                 play_q[index].put((pos_r,data_r), timeout=timeout)
             else:
                 play_q[index].put((pos_r,silence), timeout=timeout)
