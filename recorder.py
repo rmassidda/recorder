@@ -39,9 +39,7 @@ def process(frames):
         try:
             pos_r, data_r = q.get_nowait()
         except queue.Empty:
-            print('This should not happen!')
-            data_r = silence
-            # stop_callback('Buffer is empty: increase buffersize?')
+            stop_callback('Buffer is empty: increase buffersize?')
         except TypeError:
             stop_callback()  # Playback is finished
         t.get_array()[:] = data_r
@@ -186,6 +184,10 @@ workers = []
 for i in range(n_tapes):
     filename = str(i+1)+'.wav'
     workers.append(threading.Thread(target=slave,args=(i,filename)))
+
+# Prefill JACK queues from the slaves
+for i in range(n_tapes):
+    play_q[i].put((0,silence))
 
 # Automatic connections
 client.activate()
