@@ -45,17 +45,12 @@ def process(frames):
             stop_callback('Buffer is empty: increase buffersize?')
         if data is None:
             stop_callback()  # Playback is finished
-        for channel, port in zip(data.T, t):
-            port.get_array()[:] = channel
+        t.get_array()[:] = data
 
 def worker(index, filename):
     with sf.SoundFile(filename, 'r+') as f:
         # First device selected by default
         is_selected = ( index == 0 )
-
-        # Fill the queue
-        for i in range(buffersize):
-            play_q[index].put(silence)
 
         pos = 0
         cmd = ctrl_q[index].get()
@@ -99,7 +94,6 @@ def worker(index, filename):
                 play_q[index].put(data, timeout=timeout)
             elif cmd == 'REC' and is_selected:
                 f.seek(pos)
-                to_write = np.vstack((to_write,to_write)).T
                 f.write(to_write)
                 play_q[index].put(silence, timeout=timeout)
             else:
@@ -116,10 +110,10 @@ def worker(index, filename):
 client = jack.Client('mini-recorder')
 blocksize = client.blocksize
 samplerate = client.samplerate
-buffersize = 50
+buffersize = 20
 timeout = blocksize * buffersize / samplerate
-silence = np.zeros((blocksize,2))
-noise   = np.random.rand(blocksize,2)
+silence = np.zeros((blocksize))
+noise   = np.random.rand(blocksize)
 
 # Define behaviour
 client.set_shutdown_callback(shutdown)
@@ -138,9 +132,7 @@ play_q  = []
 ctrl_q  = []
 threads = []
 for i in range(n_tapes):
-    tapes.append([
-        client.outports.register('output_'+str(i+1)),
-        ])
+    tapes.append(client.outports.register('output_'+str(i+1)))
     play_q.append(queue.Queue(maxsize=buffersize))
     ctrl_q.append(queue.Queue(maxsize=buffersize))
 
@@ -150,9 +142,11 @@ for i in range(n_tapes):
     try:
         sf.SoundFile(filename,'r')
     except:
-        fp = sf.SoundFile(filename,'w+', samplerate=samplerate, channels=2, format='WAV', subtype='FLOAT')
+        fp = sf.SoundFile(filename,'w+', samplerate=samplerate, channels=1, format='WAV', subtype='FLOAT')
         fp.close()
 
+    # Fill the queue
+    # play_q[i].put(silence)
 
 # Monitor
 monitor = client.outports.register('monitor')
