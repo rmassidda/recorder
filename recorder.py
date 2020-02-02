@@ -67,13 +67,13 @@ def coordinator():
 
         # Interrupt
         if cmd is None:
-            print("Coordinator incites the workers to kill JACK")
+            if verbose: print("Coordinator incites the workers to kill JACK")
             for i in range(n_tapes):
                 sync_q[i].put(None)
-            print("Wait for JACK to die")
+            if verbose: print("Wait for JACK to die")
             while rec_q.get() is not None:
                 pass
-            print("Jack died")
+            if verbose: print("Jack died")
             break
 
         # Default play mode
@@ -100,7 +100,7 @@ def coordinator():
         try:
             pos_w, data_w = rec_q.get_nowait()
         except queue.Empty:
-            print('Jack → Coordinator empty')
+            if verbose: print('Jack → Coordinator empty')
             pos_w = -1
             pass
 
@@ -126,7 +126,7 @@ def worker(index, filename):
             try:
                 speed, pos_r, pos_w, data_w = sync_q[index].get()
             except queue.Empty:
-                print('sync_q: Coordinator → Worker',index,'empty')
+                if verbose: print('sync_q: Coordinator → Worker',index,'empty')
                 continue
             except TypeError:
                 break
@@ -153,7 +153,7 @@ def worker(index, filename):
                 f.write(data_w)
 
         # Stop JACK process
-        print("Worker",index,"stabbed JACK, ouch!")
+        if verbose: print("Worker",index,"stabbed JACK, ouch!")
         play_q[index].put(None, timeout=timeout)
 
 # Argument parsing
@@ -161,22 +161,26 @@ parser = argparse.ArgumentParser(description='Minimal recording module for JACK'
 parser.add_argument('-n', dest='n', type=int, default=8, help='Number of tapes (default: 8)')
 parser.add_argument('-bs', type=int, dest='buffersize', default=20, help='Buffer size (default: 20)')
 parser.add_argument('-c', type=str, dest='clientname', default='recorder', help='Custom JACK client name (default: \'recorder\')')
+parser.add_argument('--manual', action='store_const', dest='manual', const=True, default=False, help='Do not autoconnect to system ports')
+parser.add_argument('--verbose', action='store_const', dest='verbose', const=True, default=False, help='Be verbose')
 args = parser.parse_args()
 
 # Store arguments
 clientname = args.clientname
 buffersize = args.buffersize
 n_tapes    = args.n
+manual     = args.manual
+verbose    = args.verbose
 
 # Define client
 client = jack.Client(clientname)
 blocksize = client.blocksize
 samplerate = client.samplerate
 timeout = blocksize * buffersize / samplerate
-print('blocksize',blocksize)
-print('samplerate',samplerate)
-print('buffersize',buffersize)
-print('timeout',timeout)
+if verbose: print('blocksize',blocksize)
+if verbose: print('samplerate',samplerate)
+if verbose: print('buffersize',buffersize)
+if verbose: print('timeout',timeout)
 silence = np.zeros((blocksize))
 noise   = np.random.rand(blocksize)
 
@@ -233,10 +237,11 @@ for _ in range(buffersize):
 
 # Automatic connections
 client.activate()
-client.connect('system:capture_1', clientname+':input')
-client.connect(clientname+':monitor', 'system:playback_1')
-for i in range(n_tapes):
-    client.connect(clientname+':output_'+str(i+1), 'system:playback_1')
+if not manual:
+    client.connect('system:capture_1', clientname+':input')
+    client.connect(clientname+':monitor', 'system:playback_1')
+    for i in range(n_tapes):
+        client.connect(clientname+':output_'+str(i+1), 'system:playback_1')
     
 # Start threads
 coordinator.start()
