@@ -51,7 +51,7 @@ def process(frames):
     """
     rec_q.put((pos_r+blocksize*buffersize,input_line.get_array()))
 
-def master():
+def coordinator():
     pos_r      = -1
     next_pos_r = 0
     selected   = -1
@@ -66,7 +66,7 @@ def master():
 
         # Interrupt
         if cmd is None:
-            print("Master incites the slaves to kill JACK")
+            print("Coordinator incites the workers to kill JACK")
             for i in range(n_tapes):
                 sync_q[i].put(None)
             print("Wait for JACK to die")
@@ -99,11 +99,11 @@ def master():
         try:
             pos_w, data_w = rec_q.get_nowait()
         except queue.Empty:
-            print('Jack → Master empty')
+            print('Jack → Coordinator empty')
             pos_w = -1
             pass
 
-        # Send position to the slaves
+        # Send position to the workers
         for i in range(n_tapes):
             if i == selected:
                 sync_q[i].put((speed,pos_r,pos_w,data_w))
@@ -119,13 +119,13 @@ def master():
         elif cmd[:3] == 'FWD':
             next_pos_r = pos_r + int(speed * blocksize)
 
-def slave(index, filename):
+def worker(index, filename):
     with sf.SoundFile(filename, 'r+') as f:
         while True:
             try:
                 speed, pos_r, pos_w, data_w = sync_q[index].get()
             except queue.Empty:
-                print('sync_q: Master → Slave',index,'empty')
+                print('sync_q: Coordinator → Worker',index,'empty')
                 continue
             except TypeError:
                 break
@@ -152,7 +152,7 @@ def slave(index, filename):
                 f.write(data_w)
 
         # Stop JACK process
-        print("Slave",index,"stabbed JACK, ouch!")
+        print("Worker",index,"stabbed JACK, ouch!")
         play_q[index].put(None, timeout=timeout)
 
 # Define client
@@ -182,20 +182,20 @@ tapes   = []
 for i in range(n_tapes):
     tapes.append(client.outports.register('output_'+str(i+1)))
 
-# Controller → Master
+# Controller → Coordinator
 sync_q = []
 ctrl_q = queue.Queue(maxsize=buffersize)
 
-# Master → Slave
+# Coordinator → Worker
 for i in range(n_tapes):
     sync_q.append(queue.Queue(maxsize=buffersize))
 
-# Slave → Jack
+# Worker → Jack
 play_q = []
 for i in range(n_tapes):
     play_q.append(queue.Queue(maxsize=buffersize))
 
-# Jack → Master
+# Jack → Coordinator
 rec_q = queue.Queue(maxsize=buffersize)
 
 # Create files if they do not exist
@@ -208,11 +208,11 @@ for i in range(n_tapes):
         fp.close()
 
 # Create threads
-master  = threading.Thread(target=master)
+coordinator  = threading.Thread(target=coordinator)
 workers = []
 for i in range(n_tapes):
     filename = str(i+1)+'.wav'
-    workers.append(threading.Thread(target=slave,args=(i,filename)))
+    workers.append(threading.Thread(target=worker,args=(i,filename)))
 
 # Prefill JACK queues
 for _ in range(buffersize):
@@ -228,7 +228,7 @@ for i in range(n_tapes):
     client.connect('mini-recorder:output_'+str(i+1), 'system:playback_1')
     
 # Start threads
-master.start()
+coordinator.start()
 for i in range(n_tapes):
     workers[i].start()
 
@@ -284,7 +284,7 @@ while True:
         break
 
 # Join threads
-master.join()
+coordinator.join()
 for i in range(n_tapes):
     workers[i].join()
 
