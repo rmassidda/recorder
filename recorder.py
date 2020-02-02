@@ -1,3 +1,4 @@
+import argparse
 import jack
 import queue
 import numpy as np
@@ -155,11 +156,22 @@ def worker(index, filename):
         print("Worker",index,"stabbed JACK, ouch!")
         play_q[index].put(None, timeout=timeout)
 
+# Argument parsing
+parser = argparse.ArgumentParser(description='Minimal recording module for JACK',prog='recorder')
+parser.add_argument('-n', dest='n', type=int, default=8, help='Number of tapes (default: 8)')
+parser.add_argument('-bs', type=int, dest='buffersize', default=20, help='Buffer size (default: 20)')
+parser.add_argument('-c', type=str, dest='clientname', default='recorder', help='Custom JACK client name (default: \'recorder\')')
+args = parser.parse_args()
+
+# Store arguments
+clientname = args.clientname
+buffersize = args.buffersize
+n_tapes    = args.n
+
 # Define client
-client = jack.Client('mini-recorder')
+client = jack.Client(clientname)
 blocksize = client.blocksize
 samplerate = client.samplerate
-buffersize = 20
 timeout = blocksize * buffersize / samplerate
 print('blocksize',blocksize)
 print('samplerate',samplerate)
@@ -167,7 +179,6 @@ print('buffersize',buffersize)
 print('timeout',timeout)
 silence = np.zeros((blocksize))
 noise   = np.random.rand(blocksize)
-n_tapes = 8
 
 # Define behaviour
 client.set_shutdown_callback(shutdown)
@@ -222,10 +233,10 @@ for _ in range(buffersize):
 
 # Automatic connections
 client.activate()
-client.connect('system:capture_1', 'mini-recorder:input')
-client.connect('mini-recorder:monitor', 'system:playback_1')
+client.connect('system:capture_1', clientname+':input')
+client.connect(clientname+':monitor', 'system:playback_1')
 for i in range(n_tapes):
-    client.connect('mini-recorder:output_'+str(i+1), 'system:playback_1')
+    client.connect(clientname+':output_'+str(i+1), 'system:playback_1')
     
 # Start threads
 coordinator.start()
