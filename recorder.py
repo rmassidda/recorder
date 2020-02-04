@@ -266,7 +266,10 @@ def helper():
 print('recorder, interactive mode')
 helper()
 while True:
-    line = input(prompt)
+    try:
+        line = input(prompt)
+    except (KeyboardInterrupt, EOFError):
+        line = 'quit'
     
     try:
         arg = line.split()[1]
