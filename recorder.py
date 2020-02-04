@@ -239,9 +239,10 @@ for _ in range(buffersize):
 client.activate()
 if not manual:
     client.connect('system:capture_1', clientname+':input')
-    client.connect(clientname+':monitor', 'system:playback_1')
-    for i in range(n_tapes):
-        client.connect(clientname+':output_'+str(i+1), 'system:playback_1')
+    for pan in ['1','2']:
+        client.connect(clientname+':monitor', 'system:playback_'+pan)
+        for i in range(n_tapes):
+            client.connect(clientname+':output_'+str(i+1), 'system:playback_'+pan)
     
 # Start threads
 coordinator.start()
