@@ -2,6 +2,7 @@ import argparse
 import jack
 import queue
 import numpy as np
+import os
 import time
 import threading
 import soundfile as sf
@@ -261,6 +262,7 @@ def helper():
     print('r[ec] tape_id')
     print('f[orward] [speed]')
     print('b[ackward] [speed]')
+    print('c[lear]')
     print('q[uit]')
 
 print('recorder, interactive mode')
@@ -302,6 +304,8 @@ while True:
     elif line[0] == 'q':
         ctrl_q.put(None)
         break
+    elif line[0] == 'c':
+        os.system('clear')
 
 # Join threads
 coordinator.join()
