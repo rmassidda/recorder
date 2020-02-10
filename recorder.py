@@ -43,7 +43,7 @@ def process(frames):
         except queue.Empty:
             stop_callback('Buffer is empty: increase buffersize?')
         except TypeError:
-            rec_q.put(None)
+            rec_q.put(None, timeout=timeout)
             stop_callback()  # Playback is finished
         t.get_array()[:] = data_r
 
@@ -51,7 +51,7 @@ def process(frames):
     The block recorded is based on what
     was listened in the previous.
     """
-    rec_q.put((pos_r+blocksize*buffersize,input_line.get_array()))
+    rec_q.put((pos_r+blocksize*buffersize,input_line.get_array()), timeout=timeout)
 
 def coordinator():
     pos_r      = -1
@@ -70,7 +70,7 @@ def coordinator():
         if cmd is None:
             if verbose: print("Coordinator incites the workers to kill JACK")
             for i in range(n_tapes):
-                sync_q[i].put(None)
+                sync_q[i].put(None, timeout=timeout)
             if verbose: print("Wait for JACK to die")
             while rec_q.get() is not None:
                 pass
@@ -108,9 +108,9 @@ def coordinator():
         # Send position to the workers
         for i in range(n_tapes):
             if i == selected:
-                sync_q[i].put((speed,pos_r,pos_w,data_w))
+                sync_q[i].put((speed,pos_r,pos_w,data_w), timeout=timeout)
             else:
-                sync_q[i].put((speed,pos_r,-1,None))
+                sync_q[i].put((speed,pos_r,-1,None), timeout=timeout)
 
         if cmd == 'PLAY' or cmd[:3] == 'REC':
             next_pos_r = pos_r + blocksize
