@@ -2,6 +2,7 @@ import argparse
 import jack
 import queue
 import numpy as np
+import os
 import time
 import threading
 import soundfile as sf
@@ -42,7 +43,7 @@ def process(frames):
         except queue.Empty:
             stop_callback('Buffer is empty: increase buffersize?')
         except TypeError:
-            rec_q.put(None)
+            rec_q.put(None, timeout=timeout)
             stop_callback()  # Playback is finished
         t.get_array()[:] = data_r
 
@@ -50,7 +51,7 @@ def process(frames):
     The block recorded is based on what
     was listened in the previous.
     """
-    rec_q.put((pos_r+blocksize*buffersize,input_line.get_array()))
+    rec_q.put((pos_r+blocksize*buffersize,input_line.get_array()), timeout=timeout)
 
 def coordinator():
     pos_r      = -1
@@ -69,7 +70,7 @@ def coordinator():
         if cmd is None:
             if verbose: print("Coordinator incites the workers to kill JACK")
             for i in range(n_tapes):
-                sync_q[i].put(None)
+                sync_q[i].put(None, timeout=timeout)
             if verbose: print("Wait for JACK to die")
             while rec_q.get() is not None:
                 pass
@@ -107,9 +108,9 @@ def coordinator():
         # Send position to the workers
         for i in range(n_tapes):
             if i == selected:
-                sync_q[i].put((speed,pos_r,pos_w,data_w))
+                sync_q[i].put((speed,pos_r,pos_w,data_w), timeout=timeout)
             else:
-                sync_q[i].put((speed,pos_r,-1,None))
+                sync_q[i].put((speed,pos_r,-1,None), timeout=timeout)
 
         if cmd == 'PLAY' or cmd[:3] == 'REC':
             next_pos_r = pos_r + blocksize
@@ -239,9 +240,10 @@ for _ in range(buffersize):
 client.activate()
 if not manual:
     client.connect('system:capture_1', clientname+':input')
-    client.connect(clientname+':monitor', 'system:playback_1')
-    for i in range(n_tapes):
-        client.connect(clientname+':output_'+str(i+1), 'system:playback_1')
+    for pan in ['1','2']:
+        client.connect(clientname+':monitor', 'system:playback_'+pan)
+        for i in range(n_tapes):
+            client.connect(clientname+':output_'+str(i+1), 'system:playback_'+pan)
     
 # Start threads
 coordinator.start()
@@ -260,12 +262,16 @@ def helper():
     print('r[ec] tape_id')
     print('f[orward] [speed]')
     print('b[ackward] [speed]')
+    print('c[lear]')
     print('q[uit]')
 
 print('recorder, interactive mode')
 helper()
 while True:
-    line = input(prompt)
+    try:
+        line = input(prompt)
+    except (KeyboardInterrupt, EOFError):
+        line = 'quit'
     
     try:
         arg = line.split()[1]
@@ -298,6 +304,8 @@ while True:
     elif line[0] == 'q':
         ctrl_q.put(None)
         break
+    elif line[0] == 'c':
+        os.system('clear')
 
 # Join threads
 coordinator.join()
