@@ -1,4 +1,5 @@
-from recorder import Recorder
+#! python3
+from jackrecorder import Recorder
 import argparse
 import os
 import queue
