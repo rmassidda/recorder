@@ -204,7 +204,6 @@ def recorder(ctrl_q,clientname, buffersize, n_tapes, manual, verbose):
             fp.close()
 
     # Create threads
-    coordinator  = threading.Thread(target=coordinator)
     workers = []
     for i in range(n_tapes):
         filename = str(i+1)+'.wav'
@@ -226,12 +225,12 @@ def recorder(ctrl_q,clientname, buffersize, n_tapes, manual, verbose):
                 client.connect(clientname+':output_'+str(i+1), 'system:playback_'+pan)
         
     # Start threads
-    coordinator.start()
     for i in range(n_tapes):
         workers[i].start()
 
+    coordinator()
+
     # Join threads
-    coordinator.join()
     for i in range(n_tapes):
         workers[i].join()
 
