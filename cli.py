@@ -1,7 +1,7 @@
 from recorder import Recorder
 import argparse
-import queue
 import os
+import queue
 import threading
 import time
 

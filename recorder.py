@@ -1,9 +1,9 @@
 import jack
-import queue
 import numpy as np
-import threading
+import queue
 import soundfile as sf
 import sys
+import threading
 
 def print_error(*args):
     print(*args, file=sys.stderr)
