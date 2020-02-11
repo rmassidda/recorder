@@ -267,4 +267,4 @@ class Recorder:
         self.ctrl_q.put('FWD'+speed)
 
     def backward(self,speed):
-        ctrl_q.put('RWD'+speed)
+        self.ctrl_q.put('RWD'+speed)
