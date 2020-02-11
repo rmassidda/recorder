@@ -1,0 +1,72 @@
+#! python3
+from jackrecorder import Recorder
+import argparse
+import os
+import queue
+import threading
+import time
+
+# Argument parsing
+parser = argparse.ArgumentParser(description='Minimal recording module for JACK',prog='recorder')
+parser.add_argument('-n', dest='n', type=int, default=8, help='Number of tapes (default: 8)')
+parser.add_argument('-bs', type=int, dest='buffersize', default=20, help='Buffer size (default: 20)')
+parser.add_argument('-c', type=str, dest='clientname', default='recorder', help='Custom JACK client name (default: \'recorder\')')
+parser.add_argument('--manual', action='store_const', dest='manual', const=True, default=False, help='Do not autoconnect to system ports')
+parser.add_argument('--verbose', action='store_const', dest='verbose', const=True, default=False, help='Be verbose')
+args = parser.parse_args()
+
+# Interactive shell
+prompt = '> '
+
+def helper():
+    print('h[elp], to show this scree again')
+    print('p[lay]')
+    print('s[top]')
+    print('[paus]e')
+    print('r[ec] tape_id')
+    print('f[orward] [speed]')
+    print('b[ackward] [speed]')
+    print('c[lear]')
+    print('q[uit]')
+
+print('recorder, interactive mode')
+helper()
+with Recorder(args.clientname, args.buffersize, args.n, args.manual, args.verbose) as rec:
+    while True:
+        try:
+            line = input(prompt)
+        except (KeyboardInterrupt, EOFError):
+            line = 'quit'
+        
+        try:
+            arg = line.split()[1]
+        except:
+            arg = None
+
+        if line == '':
+            print(end='')
+            continue
+
+        if line[0] == 'h':
+            helper()
+        elif line[0] == 'p':
+            rec.play()
+        elif line[0] == 's':
+            rec.stop()
+        elif line[0] == 'e':
+            rec.pause()
+        elif line[0] == 'r':
+            if arg is not None:
+                rec.record(arg)
+        elif line[0] == 'f':
+            if arg is None:
+                arg = str(1.5)
+            rec.forward(arg)
+        elif line[0] == 'b':
+            if arg is None:
+                arg = str(1.5)
+            rec.backward(arg)
+        elif line[0] == 'q':
+            break
+        elif line[0] == 'c':
+            os.system('clear')
