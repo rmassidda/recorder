@@ -1,4 +1,4 @@
-from recorder import recorder
+from recorder import Recorder
 import argparse
 import queue
 import os
@@ -14,13 +14,7 @@ parser.add_argument('--manual', action='store_const', dest='manual', const=True,
 parser.add_argument('--verbose', action='store_const', dest='verbose', const=True, default=False, help='Be verbose')
 args = parser.parse_args()
 
-# Store arguments
-ctrl_q = queue.Queue(maxsize=args.buffersize)
-rec = threading.Thread(target=recorder, args=(ctrl_q, args.clientname, args.buffersize, args.n, args.manual, args.verbose ))
-
-rec.start()
 # Interactive shell
-time.sleep(0.3)
 prompt = '> '
 
 def helper():
@@ -36,44 +30,42 @@ def helper():
 
 print('recorder, interactive mode')
 helper()
-while True:
-    try:
-        line = input(prompt)
-    except (KeyboardInterrupt, EOFError):
-        line = 'quit'
-    
-    try:
-        arg = line.split()[1]
-    except:
-        arg = None
+with Recorder(args.clientname, args.buffersize, args.n, args.manual, args.verbose) as rec:
+    while True:
+        try:
+            line = input(prompt)
+        except (KeyboardInterrupt, EOFError):
+            line = 'quit'
+        
+        try:
+            arg = line.split()[1]
+        except:
+            arg = None
 
-    if line == '':
-        print(end='')
-        continue
+        if line == '':
+            print(end='')
+            continue
 
-    if line[0] == 'h':
-        helper()
-    elif line[0] == 'p':
-        ctrl_q.put('PLAY')
-    elif line[0] == 's':
-        ctrl_q.put('STOP')
-    elif line[0] == 'e':
-        ctrl_q.put('PAUSE')
-    elif line[0] == 'r':
-        if arg is not None:
-            ctrl_q.put('REC'+arg)
-    elif line[0] == 'f':
-        if arg is None:
-            arg = str(1.5)
-        ctrl_q.put('FWD'+arg)
-    elif line[0] == 'b':
-        if arg is None:
-            arg = str(1.5)
-        ctrl_q.put('RWD'+arg)
-    elif line[0] == 'q':
-        ctrl_q.put(None)
-        break
-    elif line[0] == 'c':
-        os.system('clear')
-
-rec.join()
+        if line[0] == 'h':
+            helper()
+        elif line[0] == 'p':
+            rec.play()
+        elif line[0] == 's':
+            rec.stop()
+        elif line[0] == 'e':
+            rec.pause()
+        elif line[0] == 'r':
+            if arg is not None:
+                rec.record(arg)
+        elif line[0] == 'f':
+            if arg is None:
+                arg = str(1.5)
+            rec.forward(arg)
+        elif line[0] == 'b':
+            if arg is None:
+                arg = str(1.5)
+            rec.backward(arg)
+        elif line[0] == 'q':
+            break
+        elif line[0] == 'c':
+            os.system('clear')

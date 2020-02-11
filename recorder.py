@@ -238,3 +238,34 @@ def recorder(ctrl_q,clientname, buffersize, n_tapes, manual, verbose):
     # Wait and close
     client.deactivate()
     client.close()
+
+class Recorder:
+    def __init__(self, clientname, buffersize, n_tapes, manual, verbose):
+        self.ctrl_q = queue.Queue(maxsize=buffersize)
+        self.main   = threading.Thread(target=recorder, args=(self.ctrl_q, clientname, buffersize, n_tapes, manual, verbose))
+
+    def __enter__(self):
+        self.main.start()
+        return self
+
+    def __exit__(self, *args):
+        self.ctrl_q.put(None)
+        self.main.join()
+
+    def play(self):
+        self.ctrl_q.put('PLAY')
+
+    def stop(self):
+        self.ctrl_q.put('STOP')
+
+    def pause(self):
+        self.ctrl_q.put('PAUSE')
+
+    def record(self,tape):
+        self.ctrl_q.put('REC'+tape)
+
+    def forward(self,speed):
+        self.ctrl_q.put('FWD'+speed)
+
+    def backward(self,speed):
+        ctrl_q.put('RWD'+speed)
