@@ -1,9 +1,18 @@
+from enum import Enum
 import jack
 import numpy as np
 import queue
 import soundfile as sf
 import sys
 import threading
+
+class Command(Enum):
+    PLAY     = 0
+    STOP     = 1
+    REC      = 2
+    PAUSE    = 3
+    FORWARD  = 4
+    BACKWARD = 5
 
 def print_error(*args):
     print(*args, file=sys.stderr)
@@ -54,17 +63,15 @@ def recorder(ctrl_q,clientname, buffersize, n_tapes, manual, verbose):
         pos_r      = -1
         next_pos_r = 0
         selected   = -1
-        cmd        = 'STOP'
+        cmd, arg   = Command.STOP, None
         
         while True:
             # Get command
             try:
-                cmd = ctrl_q.get_nowait()
+                cmd, arg = ctrl_q.get_nowait()
             except queue.Empty:
                 pass
-
-            # Interrupt
-            if cmd is None:
+            except TypeError:
                 if verbose: print("Coordinator incites the workers to kill JACK")
                 for i in range(n_tapes):
                     sync_q[i].put(None, timeout=timeout)
@@ -80,19 +87,19 @@ def recorder(ctrl_q,clientname, buffersize, n_tapes, manual, verbose):
             pos_r    = next_pos_r
 
             # Block the tape
-            if cmd == 'STOP':
+            if cmd == Command.STOP:
                 next_pos_r = 0
                 pos_r      = -1
-            elif cmd == 'PAUSE':
+            elif cmd == Command.PAUSE:
                 pos_r      = -1
 
             # Reprise the tape
-            if cmd[:3] == 'REC':
-                selected = int(cmd[3:])
-            elif cmd[:3] == 'RWD':
-                speed = -float(cmd[3:])
-            elif cmd[:3] == 'FWD':
-                speed = float(cmd[3:])
+            if cmd == Command.REC:
+                selected = arg
+            elif cmd == Command.BACKWARD:
+                speed = -arg
+            elif cmd == Command.FORWARD:
+                speed = arg
 
             # Get recording
             try:
@@ -109,13 +116,13 @@ def recorder(ctrl_q,clientname, buffersize, n_tapes, manual, verbose):
                 else:
                     sync_q[i].put((speed,pos_r,-1,None), timeout=timeout)
 
-            if cmd == 'PLAY' or cmd[:3] == 'REC':
+            if cmd == Command.PLAY or cmd == Command.REC:
                 next_pos_r = pos_r + blocksize
-            elif cmd[:3] == 'RWD':
+            elif cmd == Command.BACKWARD:
                 next_pos_r = max(0,pos_r + int(speed * blocksize))
                 if next_pos_r == 0:
-                    cmd = 'STOP'
-            elif cmd[:3] == 'FWD':
+                    cmd = Command.STOP
+            elif cmd == Command.FORWARD:
                 next_pos_r = pos_r + int(speed * blocksize)
 
     def worker(index, filename):
@@ -252,19 +259,19 @@ class Recorder:
         self.main.join()
 
     def play(self):
-        self.ctrl_q.put('PLAY')
+        self.ctrl_q.put((Command.PLAY,None))
 
     def stop(self):
-        self.ctrl_q.put('STOP')
+        self.ctrl_q.put((Command.STOP,None))
 
     def pause(self):
-        self.ctrl_q.put('PAUSE')
+        self.ctrl_q.put((Command.PAUSE,None))
 
     def record(self,tape):
-        self.ctrl_q.put('REC'+tape)
+        self.ctrl_q.put((Command.REC,tape))
 
     def forward(self,speed):
-        self.ctrl_q.put('FWD'+speed)
+        self.ctrl_q.put((Command.FORWARD,speed))
 
     def backward(self,speed):
-        self.ctrl_q.put('RWD'+speed)
+        self.ctrl_q.put((Command.BACKWARD,speed))

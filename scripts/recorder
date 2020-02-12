@@ -57,15 +57,15 @@ with Recorder(args.clientname, args.buffersize, args.n, args.manual, args.verbos
             rec.pause()
         elif line[0] == 'r':
             if arg is not None:
-                rec.record(arg)
+                rec.record(int(arg))
         elif line[0] == 'f':
             if arg is None:
-                arg = str(1.5)
-            rec.forward(arg)
+                arg = 1.5
+            rec.forward(float(arg))
         elif line[0] == 'b':
             if arg is None:
-                arg = str(1.5)
-            rec.backward(arg)
+                arg = 1.5
+            rec.backward(float(arg))
         elif line[0] == 'q':
             break
         elif line[0] == 'c':
