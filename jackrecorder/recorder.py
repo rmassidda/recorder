@@ -183,10 +183,8 @@ def recorder(ctrl_q,clientname, buffersize, n_tapes, manual, verbose):
     for i in range(n_tapes):
         tapes.append(client.outports.register('output_'+str(i+1)))
 
-    # Controller → Coordinator
-    sync_q = []
-
     # Coordinator → Worker
+    sync_q = []
     for i in range(n_tapes):
         sync_q.append(queue.Queue(maxsize=buffersize))
 
