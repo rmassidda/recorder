@@ -24,7 +24,6 @@ def shutdown(status, reason):
     print_error('JACK shutdown!')
     print_error('status:', status)
     print_error('reason:', reason)
-    event.set()
 
 def recorder(ctrl_q,clientname, buffersize, n_tapes, manual, verbose):
     def stop_callback(msg=''):
@@ -32,7 +31,6 @@ def recorder(ctrl_q,clientname, buffersize, n_tapes, manual, verbose):
             print_error(msg)
         for port in client.outports:
             port.get_array().fill(0)
-        event.set()
         raise jack.CallbackExit
 
     def process(frames):
@@ -177,7 +175,6 @@ def recorder(ctrl_q,clientname, buffersize, n_tapes, manual, verbose):
     client.set_shutdown_callback(shutdown)
     client.set_xrun_callback(xrun)
     client.set_process_callback(process)
-    event = threading.Event()
 
     # JACK ports
     input_line = client.inports.register('input')
